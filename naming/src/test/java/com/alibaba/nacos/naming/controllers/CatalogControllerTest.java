@@ -13,86 +13,90 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.alibaba.nacos.naming.controllers;
 
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
 import com.alibaba.nacos.api.common.Constants;
-import com.alibaba.nacos.api.naming.CommonParams;
-import com.alibaba.nacos.naming.core.Cluster;
-import com.alibaba.nacos.naming.core.Service;
-import com.alibaba.nacos.naming.core.ServiceManager;
-import com.alibaba.nacos.naming.misc.UtilsAndCommons;
-import org.junit.Assert;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.test.context.junit4.SpringRunner;
-import org.springframework.test.web.servlet.MockMvc;
+import com.alibaba.nacos.api.exception.NacosException;
+import com.alibaba.nacos.api.naming.pojo.Instance;
+import com.alibaba.nacos.naming.core.CatalogServiceV2Impl;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-import static org.mockito.Mockito.anyString;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
-/**
- * @author jifengnan 2019-04-29
- */
-@RunWith(SpringRunner.class)
-@SpringBootTest
-@AutoConfigureMockMvc
-public class CatalogControllerTest {
-
-    @Autowired
-    private MockMvc mockmvc;
-
-    @MockBean
-    private ServiceManager serviceManager;
-
-    @Test
-    public void testServiceDetail() throws Exception {
-        Service service = new Service(TEST_SERVICE_NAME);
-        service.setNamespaceId(Constants.DEFAULT_NAMESPACE_ID);
-        service.setProtectThreshold(12.34f);
-        service.setGroupName(TEST_GROUP_NAME);
-        Cluster cluster = new Cluster(TEST_CLUSTER_NAME, service);
-        cluster.setDefaultPort(1);
-
-        service.addCluster(cluster);
-        when(serviceManager.getService(anyString(), anyString())).thenReturn(service);
-        String result1 = mockmvc.perform(get(UtilsAndCommons.NACOS_NAMING_CONTEXT + "/catalog/service")
-            .param(CommonParams.NAMESPACE_ID, Constants.DEFAULT_NAMESPACE_ID)
-            .param(CommonParams.SERVICE_NAME, TEST_SERVICE_NAME)
-            .param(CommonParams.GROUP_NAME, TEST_GROUP_NAME))
-            .andReturn().getResponse().getContentAsString();
-        JSONObject result = JSONObject.parseObject(result1);
-        JSONObject serviceResult = (JSONObject) result.get("service");
-        Assert.assertEquals(TEST_SERVICE_NAME, serviceResult.get("name"));
-        Assert.assertEquals(12.34, Float.parseFloat(serviceResult.get("protectThreshold").toString()), 0.01);
-        Assert.assertEquals(TEST_GROUP_NAME, serviceResult.get("groupName"));
-
-        JSONArray clusterResults = (JSONArray) result.get("clusters");
-        Assert.assertEquals(1, clusterResults.size());
-        JSONObject clusterResult = (JSONObject) clusterResults.get(0);
-        Assert.assertEquals(TEST_CLUSTER_NAME, clusterResult.get("name"));
-        Assert.assertEquals(1, Integer.parseInt(clusterResult.get("defaultPort").toString()));
-        Assert.assertTrue(Boolean.parseBoolean(clusterResult.get("useIPPort4Check").toString()));
-        Assert.assertEquals(TEST_SERVICE_NAME, clusterResult.get("serviceName"));
-        Assert.assertEquals(80, Integer.parseInt(clusterResult.get("defaultCheckPort").toString()));
-    }
-
-    @Test
-    public void testServiceDetailNotFound() throws Exception {
-        String result = mockmvc.perform(get(UtilsAndCommons.NACOS_NAMING_CONTEXT + "/catalog/service")
-            .param(CommonParams.NAMESPACE_ID, Constants.DEFAULT_NAMESPACE_ID)
-            .param(CommonParams.SERVICE_NAME, TEST_SERVICE_NAME)).andReturn().getResponse().getContentAsString();
-
-        Assert.assertTrue(result.contains("test-service is not found!"));
-    }
-
+@ExtendWith(MockitoExtension.class)
+class CatalogControllerTest {
+    
     private static final String TEST_CLUSTER_NAME = "test-cluster";
+    
     private static final String TEST_SERVICE_NAME = "test-service";
+    
     private static final String TEST_GROUP_NAME = "test-group-name";
+    
+    @Mock
+    private CatalogServiceV2Impl catalogServiceV2;
+    
+    @InjectMocks
+    private CatalogController catalogController;
+    
+    @BeforeEach
+    void setUp() throws NoSuchFieldException, IllegalAccessException, NacosException {
+    }
+    
+    @Test
+    void testServiceDetail() throws Exception {
+        Object expected = new Object();
+        when(catalogServiceV2.getServiceDetail(Constants.DEFAULT_NAMESPACE_ID, TEST_GROUP_NAME, TEST_SERVICE_NAME)).thenReturn(expected);
+        Object actual = catalogController.serviceDetail(Constants.DEFAULT_NAMESPACE_ID,
+                TEST_GROUP_NAME + Constants.SERVICE_INFO_SPLITER + TEST_SERVICE_NAME);
+        assertEquals(expected, actual);
+    }
+    
+    @Test
+    void testInstanceList() throws NacosException {
+        Instance instance = new Instance();
+        instance.setIp("1.1.1.1");
+        instance.setPort(1234);
+        instance.setClusterName(TEST_CLUSTER_NAME);
+        List list = new ArrayList<>(1);
+        list.add(instance);
+        when(catalogServiceV2.listInstances(Constants.DEFAULT_NAMESPACE_ID, TEST_GROUP_NAME, TEST_SERVICE_NAME,
+                TEST_CLUSTER_NAME)).thenReturn(list);
+        ObjectNode result = catalogController.instanceList(Constants.DEFAULT_NAMESPACE_ID,
+                TEST_GROUP_NAME + Constants.SERVICE_INFO_SPLITER + TEST_SERVICE_NAME, TEST_CLUSTER_NAME, 1, 10);
+        String actual = result.toString();
+        assertTrue(actual.contains("\"count\":1"));
+        assertTrue(actual.contains("\"list\":["));
+        assertTrue(actual.contains("\"clusterName\":\"test-cluster\""));
+        assertTrue(actual.contains("\"ip\":\"1.1.1.1\""));
+        assertTrue(actual.contains("\"port\":1234"));
+    }
+    
+    @Test
+    void testListDetail() {
+        try {
+            when(catalogServiceV2.pageListServiceDetail(Constants.DEFAULT_NAMESPACE_ID, TEST_GROUP_NAME, TEST_SERVICE_NAME, 1,
+                    10)).thenReturn(Collections.emptyList());
+            Object res = catalogController.listDetail(true, Constants.DEFAULT_NAMESPACE_ID, 1, 10, TEST_SERVICE_NAME, TEST_GROUP_NAME, null,
+                    true);
+            assertTrue(res instanceof List);
+            assertEquals(0, ((List) res).size());
+        } catch (NacosException e) {
+            e.printStackTrace();
+            fail(e.getMessage());
+        }
+    }
 }

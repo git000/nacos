@@ -13,52 +13,50 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.alibaba.nacos.naming.misc;
 
-import org.springframework.beans.factory.annotation.Value;
+import com.alibaba.nacos.sys.env.EnvUtil;
 import org.springframework.stereotype.Component;
 
+import static com.alibaba.nacos.naming.constants.Constants.DATA_WARMUP;
+import static com.alibaba.nacos.naming.constants.Constants.EMPTY_SERVICE_CLEAN_INTERVAL;
+import static com.alibaba.nacos.naming.constants.Constants.EMPTY_SERVICE_EXPIRED_TIME;
+import static com.alibaba.nacos.naming.constants.Constants.EXPIRED_METADATA_CLEAN_INTERVAL;
+import static com.alibaba.nacos.naming.constants.Constants.EXPIRED_METADATA_EXPIRED_TIME;
+import static com.alibaba.nacos.naming.constants.Constants.EXPIRE_INSTANCE;
+
 /**
- * Stores some configurations for Distro protocol
+ * Stores some configurations for Distro protocol.
  *
  * @author nkorange
  * @since 1.0.0
  */
 @Component
 public class GlobalConfig {
-
-    @Value("${nacos.naming.distro.taskDispatchPeriod:200}")
-    private int taskDispatchPeriod = 2000;
-
-    @Value("${nacos.naming.distro.batchSyncKeyCount:1000}")
-    private int batchSyncKeyCount = 1000;
-
-    @Value("${nacos.naming.distro.syncRetryDelay:5000}")
-    private long syncRetryDelay = 5000L;
-
-    @Value("${nacos.naming.data.warmup:false}")
-    private boolean dataWarmup = false;
-
-    @Value("${nacos.naming.expireInstance:true}")
-    private boolean expireInstance = true;
-
-    public int getTaskDispatchPeriod() {
-        return taskDispatchPeriod;
-    }
-
-    public int getBatchSyncKeyCount() {
-        return batchSyncKeyCount;
-    }
-
-    public long getSyncRetryDelay() {
-        return syncRetryDelay;
-    }
-
+    
     public boolean isDataWarmup() {
-        return dataWarmup;
+        return EnvUtil.getProperty(DATA_WARMUP, Boolean.class, false);
     }
-
+    
     public boolean isExpireInstance() {
-        return expireInstance;
+        return EnvUtil.getProperty(EXPIRE_INSTANCE, Boolean.class, true);
     }
+    
+    public static Long getEmptyServiceCleanInterval() {
+        return EnvUtil.getProperty(EMPTY_SERVICE_CLEAN_INTERVAL, Long.class, 60000L);
+    }
+    
+    public static Long getEmptyServiceExpiredTime() {
+        return EnvUtil.getProperty(EMPTY_SERVICE_EXPIRED_TIME, Long.class, 60000L);
+    }
+    
+    public static Long getExpiredMetadataCleanInterval() {
+        return EnvUtil.getProperty(EXPIRED_METADATA_CLEAN_INTERVAL, Long.class, 5000L);
+    }
+    
+    public static Long getExpiredMetadataExpiredTime() {
+        return EnvUtil.getProperty(EXPIRED_METADATA_EXPIRED_TIME, Long.class, 60000L);
+    }
+    
 }

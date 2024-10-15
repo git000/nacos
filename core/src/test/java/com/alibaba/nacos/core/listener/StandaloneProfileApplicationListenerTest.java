@@ -13,43 +13,43 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.alibaba.nacos.core.listener;
 
-import org.apache.commons.lang3.ArrayUtils;
-import org.junit.Assert;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import com.alibaba.nacos.common.utils.ArrayUtils;
+import com.alibaba.nacos.core.code.StandaloneProfileApplicationListener;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.env.Environment;
-import org.springframework.test.context.junit4.SpringRunner;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
 
-import static com.alibaba.nacos.core.utils.Constants.STANDALONE_SPRING_PROFILE;
+import static com.alibaba.nacos.sys.env.Constants.STANDALONE_SPRING_PROFILE;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@link StandaloneProfileApplicationListener} Test
+ * {@link StandaloneProfileApplicationListener} Test.
  *
  * @author <a href="mailto:mercyblitz@gmail.com">Mercy</a>
  * @since 0.2.2
  */
-@RunWith(SpringRunner.class)
-@SpringBootTest(
-        classes = StandaloneProfileApplicationListenerTest.class,
-        webEnvironment = SpringBootTest.WebEnvironment.NONE)
-public class StandaloneProfileApplicationListenerTest {
-
-    @BeforeClass
-    public static void init() {
-        System.setProperty("nacos.standalone", "true");
-    }
-
+@ExtendWith(SpringExtension.class)
+@SpringBootTest(classes = StandaloneProfileApplicationListenerTest.class, webEnvironment = SpringBootTest.WebEnvironment.NONE)
+class StandaloneProfileApplicationListenerTest {
+    
     @Autowired
     private Environment environment;
-
-    @Test
-    public void testProfile() {
-        Assert.assertTrue(ArrayUtils.contains(environment.getActiveProfiles(), STANDALONE_SPRING_PROFILE));
+    
+    @BeforeAll
+    static void init() {
+        System.setProperty("nacos.standalone", "true");
     }
-
+    
+    @Test
+    void testProfile() {
+        assertTrue(ArrayUtils.contains(environment.getActiveProfiles(), STANDALONE_SPRING_PROFILE));
+    }
+    
 }

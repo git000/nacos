@@ -13,30 +13,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.alibaba.nacos.config.server.utils;
 
-import org.apache.commons.lang3.time.FastDateFormat;
+import com.alibaba.nacos.common.utils.DateFormatUtils;
 
 import java.sql.Timestamp;
 import java.util.Calendar;
-import java.util.Date;
 
 /**
- * Time util
+ * Time util.
  *
  * @author Nacos
  */
 public class TimeUtils {
-
+    
+    private static final String YYYYMMMDDHHMMSS = "yyyy-MM-dd HH:mm:ss";
+    
     public static Timestamp getCurrentTime() {
-        Date date = new Date();
-        return new Timestamp(date.getTime());
+        return new Timestamp(System.currentTimeMillis());
     }
-
-     public static String getCurrentTimeStr() {
+    
+    public static String getCurrentTimeStr() {
         Calendar c = Calendar.getInstance();
-        c.setTime(new Date());
-        FastDateFormat format = FastDateFormat.getInstance("yyyy-MM-dd HH:mm:ss");
-        return format.format(c.getTime());
+        c.setTimeInMillis(System.currentTimeMillis());
+        return DateFormatUtils.format(c.getTime(), YYYYMMMDDHHMMSS);
     }
 }

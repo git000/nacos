@@ -13,23 +13,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.alibaba.nacos.api.config;
 
-import java.lang.reflect.Constructor;
-import java.util.Properties;
+package com.alibaba.nacos.api.config;
 
 import com.alibaba.nacos.api.PropertyKeyConst;
 import com.alibaba.nacos.api.exception.NacosException;
 
+import java.lang.reflect.Constructor;
+import java.util.Properties;
+
 /**
- * Config Factory
+ * Config Factory.
  *
  * @author Nacos
  */
 public class ConfigFactory {
-
+    
     /**
-     * Create Config
+     * Create Config.
      *
      * @param properties init param
      * @return ConfigService
@@ -45,18 +46,17 @@ public class ConfigFactory {
             throw new NacosException(NacosException.CLIENT_INVALID_PARAM, e);
         }
     }
-
+    
     /**
-     * Create Config
+     * Create Config.
      *
      * @param serverAddr serverList
      * @return Config
-     * @throws ConfigService Exception
+     * @throws NacosException create configService failed Exception
      */
     public static ConfigService createConfigService(String serverAddr) throws NacosException {
         Properties properties = new Properties();
         properties.put(PropertyKeyConst.SERVER_ADDR, serverAddr);
         return createConfigService(properties);
     }
-
 }

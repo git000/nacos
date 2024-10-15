@@ -13,46 +13,84 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.alibaba.nacos.example;
 
-import java.util.Properties;
+package com.alibaba.nacos.example;
 
 import com.alibaba.nacos.api.exception.NacosException;
 import com.alibaba.nacos.api.naming.NamingFactory;
 import com.alibaba.nacos.api.naming.NamingService;
+import com.alibaba.nacos.api.naming.listener.AbstractEventListener;
 import com.alibaba.nacos.api.naming.listener.Event;
-import com.alibaba.nacos.api.naming.listener.EventListener;
 import com.alibaba.nacos.api.naming.listener.NamingEvent;
 
+import java.util.Properties;
+import java.util.concurrent.Executor;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
 /**
+ * Nacos naming example.
+ * <p>Add the JVM parameter to run the NamingExample:</p>
+ * {@code -DserverAddr=${nacos.server.ip}:${nacos.server.port} -Dnamespace=${namespaceId}}
+ *
  * @author nkorange
  */
 public class NamingExample {
-
-    public static void main(String[] args) throws NacosException {
-
+    
+    private static final String INSTANCE_SERVICE_NAME = "nacos.test.3";
+    
+    private static final String INSTANCE_IP = "11.11.11.11";
+    
+    private static final int INSTANCE_PORT = 8888;
+    
+    private static final String INSTANCE_CLUSTER_NAME = "TEST1";
+    
+    public static void main(String[] args) throws NacosException, InterruptedException {
+        
         Properties properties = new Properties();
-        properties.setProperty("serverAddr", System.getProperty("serverAddr"));
-        properties.setProperty("namespace", System.getProperty("namespace"));
-
+        properties.setProperty("serverAddr", System.getProperty("serverAddr", "localhost"));
+        properties.setProperty("namespace", System.getProperty("namespace", "public"));
+        
         NamingService naming = NamingFactory.createNamingService(properties);
-
-        naming.registerInstance("nacos.test.3", "11.11.11.11", 8888, "TEST1");
-
-        naming.registerInstance("nacos.test.3", "2.2.2.2", 9999, "DEFAULT");
-
-        System.out.println(naming.getAllInstances("nacos.test.3"));
-
-        naming.deregisterInstance("nacos.test.3", "2.2.2.2", 9999, "DEFAULT");
-
-        System.out.println(naming.getAllInstances("nacos.test.3"));
-
-        naming.subscribe("nacos.test.3", new EventListener() {
+        
+        naming.registerInstance(INSTANCE_SERVICE_NAME, INSTANCE_IP, INSTANCE_PORT, INSTANCE_CLUSTER_NAME);
+    
+        Executor executor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>(),
+                runnable -> {
+                    Thread thread = new Thread(runnable);
+                    thread.setName("test-thread");
+                    return thread;
+                });
+    
+        naming.subscribe(INSTANCE_SERVICE_NAME, new AbstractEventListener() {
+        
+            //EventListener onEvent is sync to handle, If process too low in onEvent, maybe block other onEvent callback.
+            //So you can override getExecutor() to async handle event.
+            @Override
+            public Executor getExecutor() {
+                return executor;
+            }
+        
             @Override
             public void onEvent(Event event) {
-                System.out.println(((NamingEvent)event).getServiceName());
-                System.out.println(((NamingEvent)event).getInstances());
+                System.out.println("[serviceName] " + ((NamingEvent) event).getServiceName());
+                System.out.println("[instances from event] " + ((NamingEvent) event).getInstances());
             }
         });
+        
+        Thread.sleep(1000);
+    
+        System.out.println("[instances after register] " + naming.getAllInstances(INSTANCE_SERVICE_NAME));
+        
+        Thread.sleep(1000);
+    
+        naming.deregisterInstance(INSTANCE_SERVICE_NAME, INSTANCE_IP, INSTANCE_PORT, INSTANCE_CLUSTER_NAME);
+    
+        Thread.sleep(1000);
+        
+        System.out.println("[instances after deregister] " + naming.getAllInstances(INSTANCE_SERVICE_NAME));
+        
+        Thread.sleep(1000);
     }
 }

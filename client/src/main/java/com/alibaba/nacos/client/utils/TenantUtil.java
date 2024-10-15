@@ -13,50 +13,61 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.alibaba.nacos.client.utils;
 
+import com.alibaba.nacos.api.SystemPropertyKeyConst;
+import com.alibaba.nacos.client.env.NacosClientProperties;
+import com.alibaba.nacos.common.utils.StringUtils;
+
 /**
- * Tenant Util
+ * Tenant Util.
  *
  * @author Nacos
  */
 public class TenantUtil {
-
-    private static String userTenant;
-
+    
+    private static final String USER_TENANT;
+    
+    private static final String DEFAULT_ACM_NAMESPACE = "";
+    
+    private static final String TENANT_ID = "tenant.id";
+    
+    private static final String ACM_NAMESPACE_PROPERTY = "acm.namespace";
+    
     static {
-        userTenant = System.getProperty("tenant.id", "");
+        USER_TENANT = NacosClientProperties.PROTOTYPE.getProperty(TENANT_ID, "");
     }
-
+    
     /**
      * Adapt the way ACM gets tenant on the cloud.
      * <p>
-     * Note the difference between getting and getting ANS.
-     * Since the processing logic on the server side is different, the default value returns differently.
+     * Note the difference between getting and getting ANS. Since the processing logic on the server side is different,
+     * the default value returns differently.
      * </p>
      *
-     * @return
+     * @return user tenant for acm
      */
     public static String getUserTenantForAcm() {
-        String tmp = userTenant;
-
-        if (StringUtils.isBlank(userTenant)) {
-            tmp = System.getProperty("acm.namespace", "");
+        String tmp = USER_TENANT;
+        
+        if (StringUtils.isBlank(USER_TENANT)) {
+            tmp = NacosClientProperties.PROTOTYPE.getProperty(ACM_NAMESPACE_PROPERTY, DEFAULT_ACM_NAMESPACE);
         }
-
+        
         return tmp;
     }
-
+    
     /**
      * Adapt the way ANS gets tenant on the cloud.
      *
-     * @return
+     * @return user tenant for ans
      */
     public static String getUserTenantForAns() {
-        String tmp = userTenant;
-
-        if (StringUtils.isBlank(userTenant)) {
-            tmp = System.getProperty("ans.namespace");
+        String tmp = USER_TENANT;
+        
+        if (StringUtils.isBlank(USER_TENANT)) {
+            tmp = NacosClientProperties.PROTOTYPE.getProperty(SystemPropertyKeyConst.ANS_NAMESPACE);
         }
         return tmp;
     }

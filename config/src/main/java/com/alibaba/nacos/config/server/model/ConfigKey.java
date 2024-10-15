@@ -13,57 +13,69 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.alibaba.nacos.config.server.model;
 
 import java.io.Serializable;
+import java.util.Objects;
 
 /**
- * config key
+ * ConfigKey.
  *
  * @author Nacos
  */
 public class ConfigKey implements Serializable {
-
-    /**
-     *
-     */
+    
     private static final long serialVersionUID = -1748953484511867580L;
-
+    
     private String appName;
+    
     private String dataId;
+    
     private String group;
-
+    
     public ConfigKey() {
     }
-
-    public ConfigKey(String appName, String dataId, String group) {
-        this.appName = appName;
-        this.dataId = dataId;
-        this.group = group;
-    }
-
+    
     public String getAppName() {
         return appName;
     }
-
+    
     public void setAppName(String appName) {
         this.appName = appName;
     }
-
+    
     public String getDataId() {
         return dataId;
     }
-
+    
     public void setDataId(String dataId) {
         this.dataId = dataId;
     }
-
+    
     public String getGroup() {
         return group;
     }
-
+    
     public void setGroup(String group) {
         this.group = group;
     }
-
+    
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        ConfigKey configKey = (ConfigKey) o;
+        return Objects.equals(appName, configKey.appName) && Objects.equals(dataId, configKey.dataId) && Objects.equals(
+                group, configKey.group);
+    }
+    
+    @Override
+    public int hashCode() {
+        return Objects.hash(appName, dataId, group);
+    }
 }

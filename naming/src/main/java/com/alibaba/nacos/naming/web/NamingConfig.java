@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2018 Alibaba Group Holding Ltd.
+ * Copyright 1999-2023 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.alibaba.nacos.naming.web;
 
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -20,58 +21,84 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
+ * Naming spring configuration.
+ *
  * @author nkorange
  */
 @Configuration
 public class NamingConfig {
-
+    
+    private static final String URL_PATTERNS = "/v1/ns/*";
+    
+    private static final String URL_PATTERNS_V2 = "/v2/ns/*";
+    
+    private static final String DISTRO_FILTER = "distroFilter";
+    
+    private static final String SERVICE_NAME_FILTER = "serviceNameFilter";
+    
+    private static final String TRAFFIC_REVISE_FILTER = "trafficReviseFilter";
+    
+    private static final String CLIENT_ATTRIBUTES_FILTER = "clientAttributes_filter";
+    
+    private static final String NAMING_PARAM_CHECK_FILTER = "namingparamCheckFilter";
+    
     @Bean
-    public FilterRegistrationBean distroFilterRegistration() {
+    public FilterRegistrationBean<DistroFilter> distroFilterRegistration() {
         FilterRegistrationBean<DistroFilter> registration = new FilterRegistrationBean<>();
         registration.setFilter(distroFilter());
-        registration.addUrlPatterns("/v1/ns/*");
-        registration.setName("distroFilter");
-        registration.setOrder(6);
-
+        registration.addUrlPatterns(URL_PATTERNS);
+        registration.setName(DISTRO_FILTER);
+        registration.setOrder(7);
         return registration;
     }
-
+    
     @Bean
-    public FilterRegistrationBean trafficReviseFilterRegistration() {
+    public FilterRegistrationBean<ServiceNameFilter> serviceNameFilterRegistration() {
+        FilterRegistrationBean<ServiceNameFilter> registration = new FilterRegistrationBean<>();
+        registration.setFilter(serviceNameFilter());
+        registration.addUrlPatterns(URL_PATTERNS);
+        registration.setName(SERVICE_NAME_FILTER);
+        registration.setOrder(5);
+        return registration;
+    }
+    
+    @Bean
+    public FilterRegistrationBean<TrafficReviseFilter> trafficReviseFilterRegistration() {
         FilterRegistrationBean<TrafficReviseFilter> registration = new FilterRegistrationBean<>();
         registration.setFilter(trafficReviseFilter());
-        registration.addUrlPatterns("/v1/ns/*");
-        registration.setName("trafficReviseFilter");
+        registration.addUrlPatterns(URL_PATTERNS);
+        registration.setName(TRAFFIC_REVISE_FILTER);
         registration.setOrder(1);
-
         return registration;
     }
-
+    
     @Bean
-    public FilterRegistrationBean authFilterRegistration() {
-        FilterRegistrationBean<AuthFilter> registration = new FilterRegistrationBean<>();
-
-        registration.setFilter(authFilter());
-        registration.addUrlPatterns("/v1/ns/*");
-        registration.setName("authFilter");
-        registration.setOrder(5);
-
+    public FilterRegistrationBean<ClientAttributesFilter> clientAttributesFilterRegistration() {
+        FilterRegistrationBean<ClientAttributesFilter> registration = new FilterRegistrationBean<>();
+        registration.setFilter(clientAttributesFilter());
+        registration.addUrlPatterns(URL_PATTERNS, URL_PATTERNS_V2);
+        registration.setName(CLIENT_ATTRIBUTES_FILTER);
+        registration.setOrder(8);
         return registration;
     }
-
+    
     @Bean
     public DistroFilter distroFilter() {
         return new DistroFilter();
     }
-
+    
     @Bean
     public TrafficReviseFilter trafficReviseFilter() {
         return new TrafficReviseFilter();
     }
-
+    
     @Bean
-    public AuthFilter authFilter() {
-        return new AuthFilter();
+    public ServiceNameFilter serviceNameFilter() {
+        return new ServiceNameFilter();
     }
-
+    
+    @Bean
+    public ClientAttributesFilter clientAttributesFilter() {
+        return new ClientAttributesFilter();
+    }
 }

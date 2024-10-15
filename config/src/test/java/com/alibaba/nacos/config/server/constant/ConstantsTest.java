@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.alibaba.nacos.config.server.constant;
 
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import static com.alibaba.nacos.config.server.constant.Constants.CAPACITY_CONTROLLER_PATH;
 import static com.alibaba.nacos.config.server.constant.Constants.COMMUNICATION_CONTROLLER_PATH;
@@ -24,25 +24,31 @@ import static com.alibaba.nacos.config.server.constant.Constants.CONFIG_CONTROLL
 import static com.alibaba.nacos.config.server.constant.Constants.HEALTH_CONTROLLER_PATH;
 import static com.alibaba.nacos.config.server.constant.Constants.HISTORY_CONTROLLER_PATH;
 import static com.alibaba.nacos.config.server.constant.Constants.LISTENER_CONTROLLER_PATH;
+import static com.alibaba.nacos.config.server.constant.Constants.METRICS_CONTROLLER_PATH;
 import static com.alibaba.nacos.config.server.constant.Constants.NAMESPACE_CONTROLLER_PATH;
+import static com.alibaba.nacos.config.server.constant.Constants.OPS_CONTROLLER_PATH;
+import static com.alibaba.nacos.config.server.constant.Constants.RECV_WAIT_TIMEOUT;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-/**
- * {@link Constants} Test
- *
- * @author <a href="mailto:mercyblitz@gmail.com">Mercy</a>
- * @since 0.2.2
- */
-public class ConstantsTest {
-
+class ConstantsTest {
+    
     @Test
-    public void testControllerPathsDefaultValues() {
-
-        Assert.assertEquals("/v1/cs/capacity", CAPACITY_CONTROLLER_PATH);
-        Assert.assertEquals("/v1/cs/communication", COMMUNICATION_CONTROLLER_PATH);
-        Assert.assertEquals("/v1/cs/configs", CONFIG_CONTROLLER_PATH);
-        Assert.assertEquals("/v1/cs/health", HEALTH_CONTROLLER_PATH);
-        Assert.assertEquals("/v1/cs/history", HISTORY_CONTROLLER_PATH);
-        Assert.assertEquals("/v1/cs/listener", LISTENER_CONTROLLER_PATH);
-        Assert.assertEquals("/v1/cs/namespaces", NAMESPACE_CONTROLLER_PATH);
+    void testControllerPathsDefaultValues() {
+        
+        assertEquals("/v1/cs/ops", OPS_CONTROLLER_PATH);
+        assertEquals("/v1/cs/capacity", CAPACITY_CONTROLLER_PATH);
+        assertEquals("/v1/cs/communication", COMMUNICATION_CONTROLLER_PATH);
+        assertEquals("/v1/cs/configs", CONFIG_CONTROLLER_PATH);
+        assertEquals("/v1/cs/health", HEALTH_CONTROLLER_PATH);
+        assertEquals("/v1/cs/history", HISTORY_CONTROLLER_PATH);
+        assertEquals("/v1/cs/listener", LISTENER_CONTROLLER_PATH);
+        assertEquals("/v1/cs/namespaces", NAMESPACE_CONTROLLER_PATH);
+        assertEquals("/v1/cs/metrics", METRICS_CONTROLLER_PATH);
+    }
+    
+    @Test
+    void testRecvWaitTimeoutDefaultValue() {
+        
+        assertEquals(10000, RECV_WAIT_TIMEOUT);
     }
 }

@@ -13,44 +13,50 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.alibaba.nacos.client.monitor;
 
+import io.prometheus.client.Counter;
 import io.prometheus.client.Gauge;
 import io.prometheus.client.Histogram;
 
 /**
- * Metrics Monitor
+ * Metrics Monitor.
  *
  * @author Nacos
  */
 public class MetricsMonitor {
-    private static Gauge nacosMonitor = Gauge.build()
-        .name("nacos_monitor").labelNames("module", "name")
-        .help("nacos_monitor").register();
-
-    private static Histogram nacosClientRequestHistogram = Histogram.build().labelNames("module", "method", "url", "code")
-        .name("nacos_client_request").help("nacos_client_request")
-        .register();
-
-
+    
+    private static final Gauge NACOS_MONITOR = Gauge.build().name("nacos_monitor").labelNames("module", "name")
+            .help("nacos_monitor").register();
+    
+    private static final Histogram NACOS_CLIENT_REQUEST_HISTOGRAM = Histogram.build()
+            .labelNames("module", "method", "url", "code").name("nacos_client_request").help("nacos_client_request")
+            .register();
+    
+    private static final Counter NACOS_CLIENT_NAMING_REQUEST_FAILED_TOTAL = Counter.build()
+            .name("nacos_client_naming_request_failed_total").help("nacos_client_naming_request_failed_total")
+            .labelNames("module", "req_class", "res_status", "res_code", "err_class").register();
+    
     public static Gauge.Child getServiceInfoMapSizeMonitor() {
-        return nacosMonitor.labels("naming", "serviceInfoMapSize");
+        return NACOS_MONITOR.labels("naming", "serviceInfoMapSize");
     }
-
-    public static Gauge.Child getDom2BeatSizeMonitor() {
-        return nacosMonitor.labels("naming", "dom2BeatSize");
-    }
-
+    
     public static Gauge.Child getListenConfigCountMonitor() {
-        return nacosMonitor.labels("naming", "listenConfigCount");
+        return NACOS_MONITOR.labels("config", "listenConfigCount");
     }
-
-    public static Histogram.Timer getConfigRequestMonitor(String method, String url, String code) {
-        return nacosClientRequestHistogram.labels("config", method, url, code).startTimer();
+    
+    public static Histogram.Child getConfigRequestMonitor(String method, String url, String code) {
+        return NACOS_CLIENT_REQUEST_HISTOGRAM.labels("config", method, url, code);
     }
-
+    
     public static Histogram.Child getNamingRequestMonitor(String method, String url, String code) {
-        return nacosClientRequestHistogram.labels("naming", method, url, code);
+        return NACOS_CLIENT_REQUEST_HISTOGRAM.labels("naming", method, url, code);
+    }
+    
+    public static Counter.Child getNamingRequestFailedMonitor(String reqClass, String resStatus, String resCode,
+            String errClass) {
+        return NACOS_CLIENT_NAMING_REQUEST_FAILED_TOTAL.labels("naming", reqClass, resStatus, resCode, errClass);
     }
 }
 

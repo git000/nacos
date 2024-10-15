@@ -13,326 +13,273 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.alibaba.nacos.config.server.controller;
 
+import com.alibaba.nacos.api.model.v2.ErrorCode;
+import com.alibaba.nacos.api.model.v2.Result;
+import com.alibaba.nacos.common.constant.HttpHeaderConsts;
+import com.alibaba.nacos.common.http.param.MediaType;
+import com.alibaba.nacos.common.utils.JacksonUtils;
+import com.alibaba.nacos.common.utils.Pair;
+import com.alibaba.nacos.common.utils.StringUtils;
 import com.alibaba.nacos.config.server.constant.Constants;
+import com.alibaba.nacos.config.server.enums.FileTypeEnum;
 import com.alibaba.nacos.config.server.model.CacheItem;
-import com.alibaba.nacos.config.server.model.ConfigInfoBase;
-import com.alibaba.nacos.config.server.service.ConfigService;
-import com.alibaba.nacos.config.server.service.DiskUtil;
+import com.alibaba.nacos.config.server.model.ConfigCache;
+import com.alibaba.nacos.config.server.service.ConfigCacheService;
 import com.alibaba.nacos.config.server.service.LongPollingService;
-import com.alibaba.nacos.config.server.service.PersistService;
+import com.alibaba.nacos.config.server.service.dump.disk.ConfigDiskServiceFactory;
 import com.alibaba.nacos.config.server.service.trace.ConfigTraceService;
-import com.alibaba.nacos.config.server.utils.*;
-import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.alibaba.nacos.config.server.utils.GroupKey2;
+import com.alibaba.nacos.config.server.utils.LogUtil;
+import com.alibaba.nacos.config.server.utils.MD5Util;
+import com.alibaba.nacos.config.server.utils.Protocol;
+import com.alibaba.nacos.config.server.utils.RequestUtil;
+import com.alibaba.nacos.config.server.utils.TimeUtils;
+import com.alibaba.nacos.plugin.encryption.handler.EncryptionHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.URLEncoder;
-import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
-import static com.alibaba.nacos.config.server.utils.LogUtil.pullLog;
-import static com.alibaba.nacos.core.utils.SystemUtils.STANDALONE_MODE;
+import static com.alibaba.nacos.config.server.constant.Constants.ENCODE_UTF8;
+import static com.alibaba.nacos.config.server.utils.LogUtil.PULL_LOG;
 
 /**
- * ConfigServlet inner for aop
+ * ConfigServlet inner for aop.
  *
  * @author Nacos
  */
 @Service
 public class ConfigServletInner {
-
-    @Autowired
-    private LongPollingService longPollingService;
-
-    @Autowired
-    private PersistService persistService;
-
+    
     private static final int TRY_GET_LOCK_TIMES = 9;
-
-    private static final int START_LONGPOLLING_VERSION_NUM = 204;
-
+    
+    private static final int START_LONG_POLLING_VERSION_NUM = 204;
+    
+    private static final Logger LOGGER = LoggerFactory.getLogger(ConfigServletInner.class);
+    
+    private final LongPollingService longPollingService;
+    
+    public ConfigServletInner(LongPollingService longPollingService) {
+        this.longPollingService = longPollingService;
+    }
+    
     /**
-     * 轮询接口
+     * long polling the config.
      */
     public String doPollingConfig(HttpServletRequest request, HttpServletResponse response,
-                                  Map<String, String> clientMd5Map, int probeRequestSize)
-        throws IOException {
-
-        // 长轮询
+            Map<String, String> clientMd5Map, int probeRequestSize) throws IOException {
+        
+        // Long polling.
         if (LongPollingService.isSupportLongPolling(request)) {
             longPollingService.addLongPollingClient(request, response, clientMd5Map, probeRequestSize);
             return HttpServletResponse.SC_OK + "";
         }
-
-        // else 兼容短轮询逻辑
+        
+        // Compatible with short polling logic.
         List<String> changedGroups = MD5Util.compareMd5(request, response, clientMd5Map);
-
-        // 兼容短轮询result
+        
+        // Compatible with short polling result.
         String oldResult = MD5Util.compareMd5OldResult(changedGroups);
         String newResult = MD5Util.compareMd5ResultString(changedGroups);
-
+        
         String version = request.getHeader(Constants.CLIENT_VERSION_HEADER);
         if (version == null) {
             version = "2.0.0";
         }
         int versionNum = Protocol.getVersionNumber(version);
-
-        /**
-         * 2.0.4版本以前, 返回值放入header中
-         */
-        if (versionNum < START_LONGPOLLING_VERSION_NUM) {
+        
+        // Before 2.0.4 version, return value is put into header.
+        if (versionNum < START_LONG_POLLING_VERSION_NUM) {
             response.addHeader(Constants.PROBE_MODIFY_RESPONSE, oldResult);
             response.addHeader(Constants.PROBE_MODIFY_RESPONSE_NEW, newResult);
         } else {
             request.setAttribute("content", newResult);
         }
-
-        // 禁用缓存
+        
+        // Disable cache.
         response.setHeader("Pragma", "no-cache");
         response.setDateHeader("Expires", 0);
         response.setHeader("Cache-Control", "no-cache,no-store");
         response.setStatus(HttpServletResponse.SC_OK);
         return HttpServletResponse.SC_OK + "";
     }
-
+    
     /**
-     * 同步配置获取接口
+     * Execute to get config [API V1].
      */
     public String doGetConfig(HttpServletRequest request, HttpServletResponse response, String dataId, String group,
-                              String tenant, String tag, String clientIp) throws IOException, ServletException {
+            String tenant, String tag, String isNotify, String clientIp) throws IOException, ServletException {
+        return doGetConfig(request, response, dataId, group, tenant, tag, isNotify, clientIp, false);
+    }
+    
+    /**
+     * Execute to get config [API V1] or [API V2].
+     */
+    public String doGetConfig(HttpServletRequest request, HttpServletResponse response, String dataId, String group,
+            String tenant, String tag, String isNotify, String clientIp, boolean isV2) throws IOException {
+        
+        boolean notify = StringUtils.isNotBlank(isNotify) && Boolean.parseBoolean(isNotify);
+        
+        String acceptCharset = ENCODE_UTF8;
+        
+        if (isV2) {
+            response.setHeader(HttpHeaderConsts.CONTENT_TYPE, MediaType.APPLICATION_JSON);
+        }
+        
         final String groupKey = GroupKey2.getKey(dataId, group, tenant);
-        String autoTag = request.getHeader("Vipserver-Tag");
+        String autoTag = request.getHeader(com.alibaba.nacos.api.common.Constants.VIPSERVER_TAG);
+        
         String requestIpApp = RequestUtil.getAppName(request);
-        int lockResult = tryConfigReadLock(groupKey);
-
+        int lockResult = ConfigCacheService.tryConfigReadLock(groupKey);
+        CacheItem cacheItem = ConfigCacheService.getContentCache(groupKey);
+        
         final String requestIp = RequestUtil.getRemoteIp(request);
-        boolean isBeta = false;
-        if (lockResult > 0) {
-            FileInputStream fis = null;
+        if (lockResult > 0 && cacheItem != null) {
             try {
-                String md5 = Constants.NULL;
-                long lastModified = 0L;
-                CacheItem cacheItem = ConfigService.getContentCache(groupKey);
-                if (cacheItem != null) {
-                    if (cacheItem.isBeta()) {
-                        if (cacheItem.getIps4Beta().contains(clientIp)) {
-                            isBeta = true;
-                        }
-                    }
-                }
-                File file = null;
-                ConfigInfoBase configInfoBase = null;
-                PrintWriter out = null;
+                long lastModified;
+                boolean isBeta =
+                        cacheItem.isBeta() && cacheItem.getConfigCacheBeta() != null && cacheItem.getIps4Beta() != null
+                                && cacheItem.getIps4Beta().contains(clientIp);
+                
+                final String configType =
+                        (null != cacheItem.getType()) ? cacheItem.getType() : FileTypeEnum.TEXT.getFileType();
+                response.setHeader(com.alibaba.nacos.api.common.Constants.CONFIG_TYPE, configType);
+                FileTypeEnum fileTypeEnum = FileTypeEnum.getFileTypeEnumByFileExtensionOrFileType(configType);
+                String contentTypeHeader = fileTypeEnum.getContentType();
+                response.setHeader(HttpHeaderConsts.CONTENT_TYPE,
+                        isV2 ? MediaType.APPLICATION_JSON : contentTypeHeader);
+                String pullEvent;
+                String content;
+                String md5;
+                String encryptedDataKey;
                 if (isBeta) {
-                    md5 = cacheItem.getMd54Beta();
-                    lastModified = cacheItem.getLastModifiedTs4Beta();
-                    if (STANDALONE_MODE && !PropertyUtil.isStandaloneUseMysql()) {
-                        configInfoBase = persistService.findConfigInfo4Beta(dataId, group, tenant);
-                    } else {
-                        file = DiskUtil.targetBetaFile(dataId, group, tenant);
-                    }
+                    ConfigCache configCacheBeta = cacheItem.getConfigCacheBeta();
+                    pullEvent = ConfigTraceService.PULL_EVENT_BETA;
+                    md5 = configCacheBeta.getMd5(acceptCharset);
+                    lastModified = configCacheBeta.getLastModifiedTs();
+                    encryptedDataKey = configCacheBeta.getEncryptedDataKey();
+                    content = ConfigDiskServiceFactory.getInstance().getBetaContent(dataId, group, tenant);
                     response.setHeader("isBeta", "true");
                 } else {
                     if (StringUtils.isBlank(tag)) {
                         if (isUseTag(cacheItem, autoTag)) {
-                            if (cacheItem != null) {
-                                if (cacheItem.tagMd5 != null) {
-                                    md5 = cacheItem.tagMd5.get(autoTag);
-                                }
-                                if (cacheItem.tagLastModifiedTs != null) {
-                                    lastModified = cacheItem.tagLastModifiedTs.get(autoTag);
-                                }
-                            }
-                            if (STANDALONE_MODE && !PropertyUtil.isStandaloneUseMysql()) {
-                                configInfoBase = persistService.findConfigInfo4Tag(dataId, group, tenant, autoTag);
-                            } else {
-                                file = DiskUtil.targetTagFile(dataId, group, tenant, autoTag);
-                            }
-
-                            response.setHeader("Vipserver-Tag",
-                                URLEncoder.encode(autoTag, StandardCharsets.UTF_8.displayName()));
+                            
+                            ConfigCache configCacheTag = cacheItem.getConfigCacheTags().get(autoTag);
+                            md5 = configCacheTag.getMd5(acceptCharset);
+                            lastModified = configCacheTag.getLastModifiedTs();
+                            encryptedDataKey = configCacheTag.getEncryptedDataKey();
+                            content = ConfigDiskServiceFactory.getInstance()
+                                    .getTagContent(dataId, group, tenant, autoTag);
+                            pullEvent = ConfigTraceService.PULL_EVENT_TAG + "-" + autoTag;
+                            response.setHeader(com.alibaba.nacos.api.common.Constants.VIPSERVER_TAG,
+                                    URLEncoder.encode(autoTag, StandardCharsets.UTF_8.displayName()));
                         } else {
-                            md5 = cacheItem.getMd5();
-                            lastModified = cacheItem.getLastModifiedTs();
-                            if (STANDALONE_MODE && !PropertyUtil.isStandaloneUseMysql()) {
-                                configInfoBase = persistService.findConfigInfo(dataId, group, tenant);
-                            } else {
-                                file = DiskUtil.targetFile(dataId, group, tenant);
-                            }
-                            if (configInfoBase == null && fileNotExist(file)) {
-                                // FIXME CacheItem
-                                // 不存在了无法简单的计算推送delayed，这里简单的记做-1
-                                ConfigTraceService.logPullEvent(dataId, group, tenant, requestIpApp, -1,
-                                    ConfigTraceService.PULL_EVENT_NOTFOUND, -1, requestIp);
-
-                                // pullLog.info("[client-get] clientIp={}, {},
-                                // no data",
-                                // new Object[]{clientIp, groupKey});
-
-                                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                                response.getWriter().println("config data not exist");
-                                return HttpServletResponse.SC_NOT_FOUND + "";
-                            }
+                            pullEvent = ConfigTraceService.PULL_EVENT;
+                            md5 = cacheItem.getConfigCache().getMd5(acceptCharset);
+                            lastModified = cacheItem.getConfigCache().getLastModifiedTs();
+                            encryptedDataKey = cacheItem.getConfigCache().getEncryptedDataKey();
+                            content = ConfigDiskServiceFactory.getInstance().getContent(dataId, group, tenant);
                         }
                     } else {
-                        if (cacheItem != null) {
-                            if (cacheItem.tagMd5 != null) {
-                                md5 = cacheItem.tagMd5.get(tag);
-                            }
-                            if (cacheItem.tagLastModifiedTs != null) {
-                                Long lm = cacheItem.tagLastModifiedTs.get(tag);
-                                if (lm != null) {
-                                    lastModified = lm;
-                                }
-                            }
-                        }
-                        if (STANDALONE_MODE && !PropertyUtil.isStandaloneUseMysql()) {
-                            configInfoBase = persistService.findConfigInfo4Tag(dataId, group, tenant, tag);
-                        } else {
-                            file = DiskUtil.targetTagFile(dataId, group, tenant, tag);
-                        }
-                        if (configInfoBase == null && fileNotExist(file)) {
-                            // FIXME CacheItem
-                            // 不存在了无法简单的计算推送delayed，这里简单的记做-1
-                            ConfigTraceService.logPullEvent(dataId, group, tenant, requestIpApp, -1,
-                                ConfigTraceService.PULL_EVENT_NOTFOUND,
-                                -1, requestIp);
-
-                            // pullLog.info("[client-get] clientIp={}, {},
-                            // no data",
-                            // new Object[]{clientIp, groupKey});
-
-                            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                            response.getWriter().println("config data not exist");
-                            return HttpServletResponse.SC_NOT_FOUND + "";
-                        }
+                        md5 = cacheItem.getTagMd5(tag, acceptCharset);
+                        lastModified = cacheItem.getTagLastModified(tag);
+                        encryptedDataKey = cacheItem.getTagEncryptedDataKey(tag);
+                        
+                        content = ConfigDiskServiceFactory.getInstance().getTagContent(dataId, group, tenant, tag);
+                        pullEvent = ConfigTraceService.PULL_EVENT_TAG + "-" + tag;
                     }
                 }
-
+                
+                if (content == null) {
+                    ConfigTraceService.logPullEvent(dataId, group, tenant, requestIpApp, -1, pullEvent,
+                            ConfigTraceService.PULL_TYPE_NOTFOUND, -1, requestIp, notify, "http");
+                    return get404Result(response, isV2);
+                    
+                }
                 response.setHeader(Constants.CONTENT_MD5, md5);
-                /**
-                 *  禁用缓存
-                 */
+                
+                // Disable cache.
                 response.setHeader("Pragma", "no-cache");
                 response.setDateHeader("Expires", 0);
                 response.setHeader("Cache-Control", "no-cache,no-store");
-                if (STANDALONE_MODE && !PropertyUtil.isStandaloneUseMysql()) {
-                    response.setDateHeader("Last-Modified", lastModified);
-                } else {
-                    fis = new FileInputStream(file);
-                    response.setDateHeader("Last-Modified", file.lastModified());
+                response.setDateHeader("Last-Modified", lastModified);
+                if (encryptedDataKey != null) {
+                    response.setHeader("Encrypted-Data-Key", encryptedDataKey);
                 }
-
-                if (STANDALONE_MODE && !PropertyUtil.isStandaloneUseMysql()) {
-                    out = response.getWriter();
-                    out.print(configInfoBase.getContent());
-                    out.flush();
-                    out.close();
+                PrintWriter out;
+                Pair<String, String> pair = EncryptionHandler.decryptHandler(dataId, encryptedDataKey, content);
+                String decryptContent = pair.getSecond();
+                out = response.getWriter();
+                if (isV2) {
+                    out.print(JacksonUtils.toJson(Result.success(decryptContent)));
                 } else {
-                    fis.getChannel().transferTo(0L, fis.getChannel().size(),
-                        Channels.newChannel(response.getOutputStream()));
+                    out.print(decryptContent);
                 }
-
-                LogUtil.pullCheckLog.warn("{}|{}|{}|{}", groupKey, requestIp, md5, TimeUtils.getCurrentTimeStr());
-
-                final long delayed = System.currentTimeMillis() - lastModified;
-
-                // TODO distinguish pull-get && push-get
-                // 否则无法直接把delayed作为推送延时的依据，因为主动get请求的delayed值都很大
-                ConfigTraceService.logPullEvent(dataId, group, tenant, requestIpApp, lastModified,
-                    ConfigTraceService.PULL_EVENT_OK, delayed,
-                    requestIp);
-
+                
+                out.flush();
+                out.close();
+                
+                LogUtil.PULL_CHECK_LOG.warn("{}|{}|{}|{}", groupKey, requestIp, md5, TimeUtils.getCurrentTimeStr());
+                
+                final long delayed = notify ? -1 : System.currentTimeMillis() - lastModified;
+                ConfigTraceService.logPullEvent(dataId, group, tenant, requestIpApp, lastModified, pullEvent,
+                        ConfigTraceService.PULL_TYPE_OK, delayed, clientIp, notify, "http");
             } finally {
-                releaseConfigReadLock(groupKey);
-                if (null != fis) {
-                    fis.close();
-                }
+                ConfigCacheService.releaseReadLock(groupKey);
             }
-        } else if (lockResult == 0) {
-
-            // FIXME CacheItem 不存在了无法简单的计算推送delayed，这里简单的记做-1
-            ConfigTraceService.logPullEvent(dataId, group, tenant, requestIpApp, -1,
-                ConfigTraceService.PULL_EVENT_NOTFOUND, -1, requestIp);
-
-            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            response.getWriter().println("config data not exist");
-            return HttpServletResponse.SC_NOT_FOUND + "";
-
+        } else if (lockResult == 0 || cacheItem == null) {
+            
+            ConfigTraceService.logPullEvent(dataId, group, tenant, requestIpApp, -1, ConfigTraceService.PULL_EVENT,
+                    ConfigTraceService.PULL_TYPE_NOTFOUND, -1, requestIp, notify, "http");
+            return get404Result(response, isV2);
+            
         } else {
-
-            pullLog.info("[client-get] clientIp={}, {}, get data during dump", clientIp, groupKey);
-
-            response.setStatus(HttpServletResponse.SC_CONFLICT);
-            response.getWriter().println("requested file is being modified, please try later.");
-            return HttpServletResponse.SC_CONFLICT + "";
-
+            
+            PULL_LOG.info("[client-get] clientIp={}, {}, get data during dump", clientIp, groupKey);
+            return get409Result(response, isV2);
         }
-
+        
         return HttpServletResponse.SC_OK + "";
     }
-
-    private static void releaseConfigReadLock(String groupKey) {
-        ConfigService.releaseReadLock(groupKey);
-    }
-
-    private static int tryConfigReadLock(String groupKey) {
-        /**
-         *  默认加锁失败
-         */
-        int lockResult = -1;
-        /**
-         *  尝试加锁，最多10次
-         */
-        for (int i = TRY_GET_LOCK_TIMES; i >= 0; --i) {
-            lockResult = ConfigService.tryReadLock(groupKey);
-            /**
-             *  数据不存在
-             */
-            if (0 == lockResult) {
-                break;
-            }
-
-            /**
-             *  success
-             */
-            if (lockResult > 0) {
-                break;
-            }
-            /**
-             *  retry
-             */
-            if (i > 0) {
-                try {
-                    Thread.sleep(1);
-                } catch (Exception e) {
-                }
-            }
+    
+    private String get404Result(HttpServletResponse response, boolean isV2) throws IOException {
+        response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+        PrintWriter writer = response.getWriter();
+        if (isV2) {
+            writer.println(JacksonUtils.toJson(Result.failure(ErrorCode.RESOURCE_NOT_FOUND, "config data not exist")));
+        } else {
+            writer.println("config data not exist");
         }
-
-        return lockResult;
+        return HttpServletResponse.SC_NOT_FOUND + "";
     }
-
+    
+    private String get409Result(HttpServletResponse response, boolean isV2) throws IOException {
+        response.setStatus(HttpServletResponse.SC_CONFLICT);
+        PrintWriter writer = response.getWriter();
+        if (isV2) {
+            writer.println(JacksonUtils.toJson(Result.failure(ErrorCode.RESOURCE_CONFLICT,
+                    "requested file is being modified, please try later.")));
+        } else {
+            writer.println("requested file is being modified, please try later.");
+        }
+        return HttpServletResponse.SC_CONFLICT + "";
+    }
+    
     private static boolean isUseTag(CacheItem cacheItem, String tag) {
-        if (cacheItem != null && cacheItem.tagMd5 != null && cacheItem.tagMd5.size() > 0) {
-            return StringUtils.isNotBlank(tag) && cacheItem.tagMd5.containsKey(tag);
-        }
-        return false;
+        return cacheItem != null && cacheItem.getConfigCacheTags() != null && cacheItem.getConfigCacheTags()
+                .containsKey(tag);
     }
-
-    private static boolean fileNotExist(File file) {
-        return file == null || !file.exists();
-    }
-
+    
 }
